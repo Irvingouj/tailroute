@@ -1,0 +1,35 @@
+[package]
+name = "tailsvc-controller"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "tailsvc_controller"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tailsvc-controller"
+path = "src/main.rs"
+
+[features]
+# backup is ON by default for all builds (prod + dev).
+default = ["backup"]
+# Periodic SQLite VACUUM INTO backups (included in default)
+backup = []
+# Allow missing admin_token_file → "dev-admin-token" (NEVER enable in production images)
+dev-defaults = []
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+figment.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tailsvc-common = { path = "../tailsvc-common" }
+tailsvc-dns = { path = "../tailsvc-dns" }
+tailsvc-storage = { path = "../tailsvc-storage" }
+tokio.workspace = true
+tower-http = { workspace = true, features = ["trace", "catch-panic"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true

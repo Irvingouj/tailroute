@@ -1,0 +1,27 @@
+[package]
+name = "tailsvc-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+hickory-proto.workspace = true
+
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tailsvc-common = { path = "../tailsvc-common" }
+tailsvc-controller = { path = "../tailsvc-controller", features = ["backup", "dev-defaults"] }
+tailsvc-docker = { path = "../tailsvc-docker" }
+tailsvc-proxy = { path = "../tailsvc-proxy" }
+serde_json.workspace = true
+tempfile = "3"
+tokio.workspace = true
+uuid = { version = "1", features = ["v4"] }
+
+[features]
+default = []
+docker_e2e = []

@@ -1,0 +1,4 @@
+# Copy to admin_token (gitignored) and set a strong value:
+#   openssl rand -hex 24 > admin_token
+# Also export the same value as TAILSVC_ADMIN_TOKEN for compose.
+replace-me-with-openssl-rand-hex-24

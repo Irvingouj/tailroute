@@ -1,0 +1,7 @@
+controller_url = "http://127.0.0.1:8080"
+docker_socket = "/var/run/docker.sock"
+state_dir = "data/agent"
+proxy_port = 8088
+connect_timeout_ms = 2000
+response_timeout_seconds = 300
+tcp_probe_on_register = false

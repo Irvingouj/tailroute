@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>tailsvc admin</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --ok: #3dd68c;
+      --warn: #f5a524;
+      --bad: #f31260;
+      --accent: #6ea8fe;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      background: #121a24;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+    }
+    h1 span { color: var(--muted); font-weight: 500; }
+    main { padding: 20px; max-width: 1200px; margin: 0 auto; }
+    .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    input[type="password"], input[type="text"] {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      min-width: 220px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    button {
+      background: #243247;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    button.primary { background: #1f4b99; border-color: #2f6fdb; }
+    button:hover { filter: brightness(1.08); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .card .label { color: var(--muted); font-size: 12px; }
+    .card .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    th, td {
+      text-align: left;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      background: #15202e;
+    }
+    tr:last-child td { border-bottom: 0; }
+    code, .mono { font-family: var(--mono); font-size: 12px; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 650;
+      border: 1px solid transparent;
+    }
+    .pill.ok { color: var(--ok); background: rgba(61,214,140,.12); border-color: rgba(61,214,140,.35); }
+    .pill.warn { color: var(--warn); background: rgba(245,165,36,.12); border-color: rgba(245,165,36,.35); }
+    .pill.bad { color: var(--bad); background: rgba(243,18,96,.12); border-color: rgba(243,18,96,.35); }
+    .pill.muted { color: var(--muted); background: rgba(139,155,180,.1); border-color: var(--border); }
+    .err {
+      background: rgba(243,18,96,.12);
+      border: 1px solid rgba(243,18,96,.35);
+      color: #ffb3c7;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+    .muted { color: var(--muted); }
+    .token-box {
+      max-width: 100%;
+      word-break: break-all;
+      background: #0c1118;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+    section { margin-bottom: 28px; }
+    h2 { font-size: 14px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>tailsvc <span>admin</span></h1>
+    <div class="row">
+      <input id="token" type="password" placeholder="Admin bearer token" autocomplete="off" />
+      <button class="primary" id="btn-refresh">Refresh</button>
+      <button id="btn-enroll">New enrollment token</button>
+      <button id="btn-logout">Clear token</button>
+    </div>
+  </header>
+  <main>
+    <div id="error" class="err" hidden></div>
+    <div class="cards">
+      <div class="card"><div class="label">Controller</div><div class="value" id="c-status">—</div></div>
+      <div class="card"><div class="label">Routes</div><div class="value" id="c-routes">—</div></div>
+      <div class="card"><div class="label">Probe OK</div><div class="value" id="c-probe-ok">—</div></div>
+      <div class="card"><div class="label">Agents</div><div class="value" id="c-agents">—</div></div>
+    </div>
+
+    <section>
+      <h2>Registered sites</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Hostname</th>
+            <th>Registration</th>
+            <th>HTTP probe</th>
+            <th>Backend</th>
+            <th>Agent / TS IP</th>
+            <th>Container</th>
+            <th>Lease</th>
+          </tr>
+        </thead>
+        <tbody id="routes-body">
+          <tr><td colspan="7" class="muted">Load with admin token…</td></tr>
+        </tbody>
+      </table>
+      <p class="muted" style="margin-top:8px">
+        Registration = lease still valid on the controller.
+        HTTP probe = short <code>HEAD/GET</code> from controller to <code>http://&lt;agent-ts-ip&gt;/</code> with the route <code>Host</code> (semi health through the data path).
+      </p>
+    </section>
+
+    <section>
+      <h2>Agents</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Tailscale IPv4</th>
+            <th>Last seen</th>
+            <th>Docker engine</th>
+          </tr>
+        </thead>
+        <tbody id="agents-body">
+          <tr><td colspan="5" class="muted">—</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="enroll-section" hidden>
+      <h2>Enrollment token (one-time)</h2>
+      <div class="token-box" id="enroll-token"></div>
+      <p class="muted">Copy now — controller only stores a hash; it will not be shown again.</p>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const tokenKey = "tailsvc_admin_token";
+
+    function token() {
+      return ($("token").value || "").trim();
+    }
+    function setError(msg) {
+      const el = $("error");
+      if (!msg) { el.hidden = true; el.textContent = ""; return; }
+      el.hidden = false;
+      el.textContent = msg;
+    }
+    function pill(kind, text) {
+      return `<span class="pill ${kind}">${escapeHtml(text)}</span>`;
+    }
+    function escapeHtml(s) {
+      return String(s)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;");
+    }
+    function fmtTime(iso) {
+      if (!iso) return "—";
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString();
+      } catch { return iso; }
+    }
+    async function api(path, opts = {}) {
+      const t = token();
+      if (!t) throw new Error("Enter admin token");
+      const res = await fetch(path, {
+        ...opts,
+        headers: {
+          "Authorization": `Bearer ${t}`,
+          ...(opts.headers || {}),
+        },
+      });
+      if (res.status === 401) throw new Error("Unauthorized — bad admin token");
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`${res.status} ${path}: ${body}`);
+      }
+      if (res.status === 204) return null;
+      const ct = res.headers.get("content-type") || "";
+      if (ct.includes("application/json")) return res.json();
+      return res.text();
+    }
+
+    async function refresh() {
+      setError("");
+      $("btn-refresh").disabled = true;
+      try {
+        localStorage.setItem(tokenKey, token());
+        const [health, ready, dash] = await Promise.all([
+          fetch("/health").then(r => r.ok ? r.text() : "down").catch(() => "down"),
+          fetch("/ready").then(r => r.ok ? "ready" : "not ready").catch(() => "not ready"),
+          api("/v1/admin/dashboard"),
+        ]);
+        $("c-status").textContent = health === "ok" ? (ready === "ready" ? "ok/ready" : "ok") : "down";
+        $("c-routes").textContent = String(dash.routes.length);
+        $("c-agents").textContent = String(dash.agents.length);
+        const okN = dash.routes.filter(r => r.http_probe === "ok").length;
+        $("c-probe-ok").textContent = `${okN}/${dash.routes.length}`;
+
+        const rb = $("routes-body");
+        if (!dash.routes.length) {
+          rb.innerHTML = `<tr><td colspan="7" class="muted">No registered routes</td></tr>`;
+        } else {
+          rb.innerHTML = dash.routes.map(r => {
+            const reg = r.registration === "healthy"
+              ? pill("ok", "lease ok")
+              : pill("bad", r.registration || "stale");
+            let probe;
+            if (r.http_probe === "ok") probe = pill("ok", `ok ${r.probe_ms ?? "?"}ms`);
+            else if (r.http_probe === "skipped") probe = pill("muted", "skipped");
+            else probe = pill("warn", `${r.http_probe || "fail"}${r.probe_detail ? ": " + r.probe_detail : ""}`);
+            const link = `http://${r.hostname}/`;
+            return `<tr>
+              <td class="mono"><a href="${escapeHtml(link)}" target="_blank" rel="noopener">${escapeHtml(r.hostname)}</a></td>
+              <td>${reg}</td>
+              <td>${probe}</td>
+              <td class="mono">${escapeHtml(r.backend)}</td>
+              <td class="mono">${escapeHtml(r.agent_id)}<br/><span class="muted">${escapeHtml(r.tailscale_ipv4)}</span></td>
+              <td class="mono">${escapeHtml(r.container_name || r.container_id || "—")}</td>
+              <td class="muted">${escapeHtml(fmtTime(r.lease_expires_at))}</td>
+            </tr>`;
+          }).join("");
+        }
+
+        const ab = $("agents-body");
+        if (!dash.agents.length) {
+          ab.innerHTML = `<tr><td colspan="5" class="muted">No agents</td></tr>`;
+        } else {
+          ab.innerHTML = dash.agents.map(a => {
+            const st = a.status === "healthy" ? pill("ok", "healthy") : pill("warn", a.status || "stale");
+            return `<tr>
+              <td class="mono">${escapeHtml(a.display_name)}<br/><span class="muted">${escapeHtml(a.agent_id)}</span></td>
+              <td>${st}</td>
+              <td class="mono">${escapeHtml(a.tailscale_ipv4)}</td>
+              <td class="muted">${escapeHtml(fmtTime(a.last_seen_at))}</td>
+              <td class="mono muted">${escapeHtml((a.docker_engine_id || "").slice(0, 16))}</td>
+            </tr>`;
+          }).join("");
+        }
+      } catch (e) {
+        setError(String(e.message || e));
+      } finally {
+        $("btn-refresh").disabled = false;
+      }
+    }
+
+    async function newEnroll() {
+      setError("");
+      try {
+        const res = await api("/v1/admin/enrollment-tokens", { method: "POST" });
+        $("enroll-section").hidden = false;
+        $("enroll-token").textContent = res.token;
+      } catch (e) {
+        setError(String(e.message || e));
+      }
+    }
+
+    $("token").value = localStorage.getItem(tokenKey) || "";
+    $("btn-refresh").onclick = refresh;
+    $("btn-enroll").onclick = newEnroll;
+    $("btn-logout").onclick = () => {
+      localStorage.removeItem(tokenKey);
+      $("token").value = "";
+      setError("");
+    };
+    $("token").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") refresh();
+    });
+    if ($("token").value) refresh();
+  </script>
+</body>
+</html>

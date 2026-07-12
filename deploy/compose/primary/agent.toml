@@ -1,0 +1,18 @@
+# Example production-like agent config (host network / Tailscale bind).
+# Replace 100.64.0.1 with this host's Tailscale IPv4.
+
+controller_url = "http://100.64.0.1:18080"
+docker_socket = "/var/run/docker.sock"
+state_dir = "/var/lib/tailsvc-agent"
+proxy_port = 80
+tailscale_ipv4 = "100.64.0.1"
+proxy_listen = "100.64.0.1:80"
+connect_timeout_ms = 2000
+response_timeout_seconds = 300
+tcp_probe_on_register = true
+status_listen = "100.64.0.1:18089"
+
+# Non-Docker routes (domains only in deploy config — never hardcoded in crates).
+[[static_routes]]
+hosts = ["admin.services.example"]
+backend = "http://100.64.0.1:18080"

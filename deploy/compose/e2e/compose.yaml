@@ -1,0 +1,118 @@
+# E2E stack: controller + agent (host docker.sock) + labeled services + test runner.
+# From repo root: ./deploy/compose/e2e/run-e2e.sh
+
+name: tailsvc-e2e
+
+services:
+  controller:
+    build:
+      context: ../../..
+      dockerfile: deploy/docker/Dockerfile
+    image: tailsvc-e2e:local
+    command: ["/usr/local/bin/tailsvc-controller"]
+    environment:
+      TAILSVC_CONFIG: /etc/tailsvc/controller.toml
+      RUST_LOG: info
+    volumes:
+      - ./controller.toml:/etc/tailsvc/controller.toml:ro
+      - ./admin_token:/etc/tailsvc/admin_token:ro
+      - controller-data:/var/lib/tailsvc-controller
+    ports:
+      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:15353:5353"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/health || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  agent:
+    image: tailsvc-e2e:local
+    depends_on:
+      controller:
+        condition: service_healthy
+      whoami:
+        condition: service_started
+    entrypoint: ["/bin/sh", "/entrypoint/agent-entrypoint.sh"]
+    environment:
+      TAILSVC_CONFIG: /etc/tailsvc/agent.toml
+      TAILSVC_ADMIN_TOKEN: e2e-admin-token
+      TAILSVC_CONTROLLER: http://controller:8080
+      RUST_LOG: info
+    volumes:
+      - ./agent.toml:/etc/tailsvc/agent.toml:ro
+      - ./agent-entrypoint.sh:/entrypoint/agent-entrypoint.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - agent-data:/var/lib/tailsvc-agent
+    ports:
+      - "127.0.0.1:18088:8088"
+      - "127.0.0.1:18089:8089"
+
+  whoami:
+    image: traefik/whoami:v1.10.1
+    labels:
+      tailsvc.enable: "true"
+      tailsvc.hosts: "whoami.internal"
+      tailsvc.port: "80"
+
+  # §20.2 #5 multiple hostnames + #4 explicit backend path via second service
+  whoami-multi:
+    image: traefik/whoami:v1.10.1
+    labels:
+      tailsvc.enable: "true"
+      tailsvc.hosts: "multi-a.internal,multi-b.internal"
+      tailsvc.port: "80"
+
+  whoami-alias:
+    image: traefik/whoami:v1.10.1
+    labels:
+      tailsvc.enable: "true"
+      tailsvc.hosts: "alias.internal"
+      tailsvc.backend: "http://whoami:80"
+
+  # §20.2 #17 public-domain shadowing (allowed)
+  whoami-shadow:
+    image: traefik/whoami:v1.10.1
+    labels:
+      tailsvc.enable: "true"
+      tailsvc.hosts: "example.org"
+      tailsvc.port: "80"
+
+  # §20.2 #18 invalid labels must not break valid routes
+  whoami-bad:
+    image: traefik/whoami:v1.10.1
+    labels:
+      tailsvc.enable: "true"
+      # missing hosts → ignored
+      tailsvc.port: "80"
+
+  tester:
+    image: alpine:3.20
+    depends_on:
+      - agent
+      - controller
+    profiles: ["test"]
+    volumes:
+      - ./scripts:/scripts:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: ["/bin/sh", "/scripts/run-tests-in-compose.sh"]
+    environment:
+      CONTROLLER: http://controller:8080
+      AGENT_PROXY: http://agent:8088
+      DNS_SERVER: controller
+      DNS_PORT: "5353"
+      ADMIN_TOKEN: e2e-admin-token
+      WHOAMI_HOST: whoami.internal
+      ALIAS_HOST: alias.internal
+      MULTI_A: multi-a.internal
+      MULTI_B: multi-b.internal
+      SHADOW_HOST: example.org
+      ADMIN_HOST: admin.e2e.internal
+      EXPECT_TS_IP: "100.64.0.2"
+      AGENT_STATUS: http://agent:8089
+      WHOAMI_CONTAINER: tailsvc-e2e-whoami-1
+      COMPOSE_PROJECT: tailsvc-e2e
+
+volumes:
+  controller-data:
+  agent-data:

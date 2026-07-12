@@ -1,0 +1,33 @@
+# Example production-like controller config.
+# Replace TS_IP and DNS zone with your Tailscale address / split-DNS domain.
+
+[dns]
+listen = "100.64.0.1:53"
+upstreams = ["1.1.1.1:53", "8.8.8.8:53"]
+service_ttl_seconds = 5
+upstream_timeout_ms = 2000
+positive_cache_max_seconds = 300
+negative_cache_max_seconds = 30
+query_timeout_ms = 5000
+
+[api]
+listen = "100.64.0.1:18080"
+admin_token_file = "/etc/tailsvc/admin_token"
+
+[storage]
+sqlite_path = "/var/lib/tailsvc-controller/controller.db"
+
+[leases]
+heartbeat_interval_seconds = 20
+agent_ttl_seconds = 90
+
+[backup]
+enabled = true
+dir = "/var/lib/tailsvc-controller/backups"
+interval_seconds = 3600
+keep = 48
+
+[security]
+# Prefer an allowlist matching your Tailscale split-DNS zone.
+allowed_suffixes = [".services.example"]
+blocked_names = ["github.com", "googleapis.com", "login.microsoftonline.com", "apple.com"]

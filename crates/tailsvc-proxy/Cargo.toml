@@ -1,0 +1,15 @@
+[package]
+name = "tailsvc-proxy"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+arc-swap.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+futures.workspace = true
+tailsvc-common = { path = "../tailsvc-common" }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "macros", "time"] }
+tracing.workspace = true

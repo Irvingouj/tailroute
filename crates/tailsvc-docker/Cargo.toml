@@ -1,0 +1,14 @@
+[package]
+name = "tailsvc-docker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+bollard.workspace = true
+futures.workspace = true
+serde_json.workspace = true
+tailsvc-common = { path = "../tailsvc-common" }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

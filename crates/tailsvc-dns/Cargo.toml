@@ -1,0 +1,16 @@
+[package]
+name = "tailsvc-dns"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+arc-swap.workspace = true
+async-trait.workspace = true
+hickory-client.workspace = true
+hickory-proto.workspace = true
+hickory-resolver.workspace = true
+hickory-server.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tailsvc-storage = { path = "../tailsvc-storage" }

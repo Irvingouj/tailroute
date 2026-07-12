@@ -1,0 +1,9 @@
+/target/
+/data/
+*.db
+
+# Local secrets (keep *.example committed)
+**/admin_token
+!**/admin_token.example
+.env
+*.pem.pi/

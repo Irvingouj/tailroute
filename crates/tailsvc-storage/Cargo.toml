@@ -1,0 +1,12 @@
+[package]
+name = "tailsvc-storage"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chrono.workspace = true
+sqlx.workspace = true
+tailsvc-common = { path = "../tailsvc-common" }
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true

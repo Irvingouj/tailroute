@@ -1,0 +1,29 @@
+[dns]
+listen = "127.0.0.1:5353"
+upstreams = ["1.1.1.1:53", "8.8.8.8:53"]
+service_ttl_seconds = 5
+upstream_timeout_ms = 2000
+positive_cache_max_seconds = 300
+negative_cache_max_seconds = 30
+query_timeout_ms = 5000
+
+[api]
+listen = "127.0.0.1:8080"
+admin_token_file = "config/admin_token"
+
+[storage]
+sqlite_path = "data/controller.db"
+
+[leases]
+heartbeat_interval_seconds = 20
+agent_ttl_seconds = 90
+
+[backup]
+enabled = true
+dir = "data/backups"
+interval_seconds = 3600
+keep = 24
+
+[security]
+# allowed_suffixes = [".internal", ".services.example"]
+# blocked_names = ["github.com"]

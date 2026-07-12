@@ -1,0 +1,15 @@
+controller_url = "http://controller:8080"
+docker_socket = "/var/run/docker.sock"
+state_dir = "/var/lib/tailsvc-agent"
+proxy_port = 80
+proxy_listen = "0.0.0.0:8088"
+status_listen = "0.0.0.0:8089"
+tailscale_ipv4 = "100.64.0.2"
+connect_timeout_ms = 2000
+response_timeout_seconds = 60
+tcp_probe_on_register = true
+
+# Static route (non-Docker): controller admin UI on compose network.
+[[static_routes]]
+hosts = ["admin.e2e.internal"]
+backend = "http://controller:8080"

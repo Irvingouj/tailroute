@@ -1,0 +1,26 @@
+[Unit]
+Description=tailsvc agent (Docker discovery + Tailscale HTTP proxy)
+Documentation=file:///etc/tailsvc/agent.toml
+After=network-online.target docker.service tailsvc-controller.service
+Wants=network-online.target
+# Controller may be remote; do not hard-require local unit.
+
+[Service]
+Type=simple
+User=root
+# Docker socket access typically requires root or docker group.
+Group=docker
+Environment=RUST_LOG=info
+Environment=TAILSVC_CONFIG=/etc/tailsvc/agent.toml
+ExecStart=/usr/local/bin/tailsvc-agent
+Restart=always
+RestartSec=2
+TimeoutStopSec=25
+LimitNOFILE=65535
+NoNewPrivileges=false
+# Need docker.sock + bind Tailscale :80
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
