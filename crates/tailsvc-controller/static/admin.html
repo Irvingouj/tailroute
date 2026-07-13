@@ -79,6 +79,7 @@
         <div class="card"><div class="label">Controller</div><div class="value" id="c-status">—</div></div>
         <div class="card"><div class="label">Routes</div><div class="value" id="c-routes">—</div></div>
         <div class="card"><div class="label">Probe OK</div><div class="value" id="c-probe-ok">—</div></div>
+        <div class="card"><div class="label">Agents</div><div class="value" id="c-agents">—</div></div>
         <div class="card"><div class="label">Discovered</div><div class="value" id="c-disc">—</div></div>
       </div>
       <section>
@@ -140,21 +141,31 @@
       if (token) localStorage.setItem(tokenKey, token); else localStorage.removeItem(tokenKey);
       if (user) localStorage.setItem(userKey, user); else localStorage.removeItem(userKey);
     }
+    function el(id) {
+      const n = document.getElementById(id);
+      if (!n) throw new Error("missing element #" + id);
+      return n;
+    }
+    function setText(id, text) {
+      const n = document.getElementById(id);
+      if (n) n.textContent = text;
+    }
     function showLogin(err) {
-      $("app-view").hidden = true;
-      $("login-view").hidden = false;
-      const el = $("login-error");
-      if (err) { el.hidden = false; el.textContent = err; } else { el.hidden = true; el.textContent = ""; }
+      el("app-view").hidden = true;
+      el("login-view").hidden = false;
+      const box = el("login-error");
+      if (err) { box.hidden = false; box.textContent = err; } else { box.hidden = true; box.textContent = ""; }
     }
     function showApp() {
-      $("login-view").hidden = true;
-      $("app-view").hidden = false;
-      $("whoami").textContent = localStorage.getItem(userKey) || "admin";
+      el("login-view").hidden = true;
+      el("app-view").hidden = false;
+      setText("whoami", localStorage.getItem(userKey) || "admin");
     }
     function setError(msg) {
-      const el = $("error");
-      if (!msg) { el.hidden = true; el.textContent = ""; return; }
-      el.hidden = false; el.textContent = msg;
+      const box = document.getElementById("error");
+      if (!box) return;
+      if (!msg) { box.hidden = true; box.textContent = ""; return; }
+      box.hidden = false; box.textContent = msg;
     }
     function pill(kind, text) {
       return `<span class="pill ${kind}">${escapeHtml(text)}</span>`;
@@ -269,12 +280,12 @@
           api("/v1/admin/dashboard"),
           api("/v1/admin/discovery").catch(() => []),
         ]);
-        $("c-status").textContent = health === "ok" ? (ready === "ready" ? "ok/ready" : "ok") : "down";
-        $("c-routes").textContent = String(dash.routes.length);
-        $("c-agents").textContent = String(dash.agents.length);
-        $("c-disc").textContent = String(disc.length || 0);
+        setText("c-status", health === "ok" ? (ready === "ready" ? "ok/ready" : "ok") : "down");
+        setText("c-routes", String(dash.routes.length));
+        setText("c-agents", String((dash.agents || []).length));
+        setText("c-disc", String((disc && disc.length) || 0));
         const okN = dash.routes.filter(r => r.http_probe === "ok").length;
-        $("c-probe-ok").textContent = `${okN}/${dash.routes.length}`;
+        setText("c-probe-ok", `${okN}/${dash.routes.length}`);
 
         const db = $("disc-body");
         if (!disc.length) {
@@ -355,8 +366,8 @@
       setError("");
       try {
         const res = await api("/v1/admin/enrollment-tokens", { method: "POST" });
-        $("enroll-section").hidden = false;
-        $("enroll-token").textContent = res.token;
+        el("enroll-section").hidden = false;
+        setText("enroll-token", res.token);
       } catch (e) {
         setError(String(e.message || e));
       }

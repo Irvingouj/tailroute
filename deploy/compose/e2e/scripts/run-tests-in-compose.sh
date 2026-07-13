@@ -129,6 +129,30 @@ UNAUTH=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${ADMIN_HOST}" \
 [ "$UNAUTH" = "401" ] || fail "dashboard without token expected 401 got ${UNAUTH}"
 pass "admin API still requires bearer token"
 
+# --- username/password login + discovery ---
+LOGIN_JSON=$(curl -sf -H "Host: ${ADMIN_HOST}" -H "Content-Type: application/json" \
+  -d "{\"username\":\"admin\",\"password\":\"${ADMIN_TOKEN}\"}" \
+  "${AGENT_PROXY}/v1/admin/login") \
+  || fail "admin login failed"
+SESSION=$(echo "$LOGIN_JSON" | jq -r .token)
+[ -n "$SESSION" ] && [ "$SESSION" != "null" ] || fail "login missing token"
+pass "admin username/password login"
+
+# HTML contains required element ids (guards JS null textContent bugs)
+for id in c-status c-routes c-agents c-disc c-probe-ok disc-body routes-body agents-body whoami login-view app-view; do
+  grep -q "id=\"${id}\"" /tmp/admin.html || fail "admin HTML missing id=${id}"
+done
+pass "admin HTML has required element ids"
+
+# Discovery endpoint (may be empty briefly; wait for agent report)
+wait_until 45 sh -c "curl -sf -H 'Authorization: Bearer ${SESSION}' -H 'Host: ${ADMIN_HOST}' '${AGENT_PROXY}/v1/admin/discovery' | jq -e 'type==\"array\" and length>=1' >/dev/null" \
+  || fail "discovery empty or failed"
+DISC=$(curl -sf -H "Authorization: Bearer ${SESSION}" -H "Host: ${ADMIN_HOST}" \
+  "${AGENT_PROXY}/v1/admin/discovery")
+echo "$DISC" | jq -e --arg n whoami '.[] | select(.container_name|test("whoami";"i"))' >/dev/null \
+  || fail "discovery missing whoami container"
+pass "admin discovery lists docker candidates"
+
 # --- §20.2 #7 / §20.3 container stop removes DNS ---
 if command -v docker >/dev/null 2>&1; then
   CID="$(docker ps --filter "label=tailsvc.hosts=whoami.internal" --format '{{.ID}}' | head -1 || true)"
