@@ -7,3 +7,6 @@
 !**/admin_token.example
 .env
 *.pem.pi/
+e2e/admin-ui/node_modules/
+e2e/admin-ui/test-results/
+e2e/admin-ui/playwright-report/

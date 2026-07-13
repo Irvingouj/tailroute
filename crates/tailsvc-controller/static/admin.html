@@ -297,9 +297,15 @@
               : (item.has_tailsvc_labels ? pill("muted", "label") : pill("warn", "off"));
             const hosts = item.hostnames.length ? item.hostnames.join(", ") : "—";
             const sug = item.suggested_backend || (item.published_ports.length ? "ports: " + item.published_ports.join(",") : "—");
-            const action = item.enabled && item.enabled_id
-              ? `<button data-disable="${escapeHtml(item.enabled_id)}">Disable</button>`
-              : `<button class="primary" data-enable-idx="${idx}">Enable</button>`;
+            // Docker-label managed routes: no Enable/Disable in UI (edit compose labels instead).
+            let action;
+            if (item.has_tailsvc_labels && !item.enabled) {
+              action = `<span class="muted">via labels</span>`;
+            } else if (item.enabled && item.enabled_id) {
+              action = `<button data-disable="${escapeHtml(item.enabled_id)}">Disable</button>`;
+            } else {
+              action = `<button class="primary" data-enable-idx="${idx}">Enable</button>`;
+            }
             return `<tr>
               <td class="mono">${escapeHtml(item.container_name)}<br/><span class="muted">${escapeHtml(item.identity_key)}</span></td>
               <td class="mono muted">${escapeHtml(item.image)}</td>
@@ -364,20 +370,32 @@
 
     async function newEnroll() {
       setError("");
+      const btn = document.getElementById("btn-enroll");
+      if (btn) { btn.disabled = true; btn.textContent = "Creating…"; }
       try {
-        const res = await api("/v1/admin/enrollment-tokens", { method: "POST" });
-        el("enroll-section").hidden = false;
+        const res = await api("/v1/admin/enrollment-tokens", {
+          method: "POST",
+          body: "{}",
+        });
+        if (!res || !res.token) throw new Error("no token in response");
+        const sec = el("enroll-section");
+        sec.hidden = false;
         setText("enroll-token", res.token);
+        sec.scrollIntoView({ behavior: "smooth", block: "center" });
       } catch (e) {
         setError(String(e.message || e));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "New enrollment token"; }
       }
     }
 
-    $("btn-login").onclick = login;
-    $("password").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
-    $("btn-refresh").onclick = refresh;
-    $("btn-enroll").onclick = newEnroll;
-    $("btn-logout").onclick = logout;
+    document.getElementById("btn-login").addEventListener("click", login);
+    document.getElementById("password").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") login();
+    });
+    document.getElementById("btn-refresh").addEventListener("click", () => refresh());
+    document.getElementById("btn-enroll").addEventListener("click", () => newEnroll());
+    document.getElementById("btn-logout").addEventListener("click", () => logout());
 
     if (sessionToken()) {
       showApp();
