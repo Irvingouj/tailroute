@@ -6,12 +6,12 @@ use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use chrono::Duration as ChronoDuration;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use tailsvc_common::api::{
     AdminAgentView, AdminDashboard, AdminRouteHealthView, AdminRouteView,
     CreateEnrollmentTokenResponse, EnrollRequest, EnrollResponse, HeartbeatRequest,
     PutRoutesRequest, PutRoutesResponse,
 };
-use tailsvc_common::auth::constant_time_eq;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
@@ -24,6 +24,8 @@ pub fn router(state: SharedState) -> Router {
         .route("/", get(root))
         .route("/admin", get(admin_ui))
         .route("/admin/", get(admin_ui))
+        .route("/v1/admin/login", post(admin_login))
+        .route("/v1/admin/logout", post(admin_logout))
         .route("/v1/agents/enroll", post(enroll))
         .route("/v1/agents/{agent_id}/heartbeat", post(heartbeat))
         .route("/v1/agents/{agent_id}/routes", put(put_routes))
@@ -164,11 +166,49 @@ async fn put_routes(
 
 fn check_admin(st: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let token = bearer_token(headers).ok_or(ApiError::Unauthorized)?;
-    if constant_time_eq(st.admin_token.as_slice(), token.as_bytes()) {
+    if st.admin_authorized(&token) {
         Ok(())
     } else {
         Err(ApiError::Unauthorized)
     }
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+#[derive(Debug, Serialize)]
+struct LoginResponse {
+    token: String,
+    token_type: String,
+    expires_in_seconds: u64,
+}
+
+async fn admin_login(
+    State(st): State<SharedState>,
+    Json(body): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, ApiError> {
+    if !st.verify_password(&body.username, &body.password) {
+        return Err(ApiError::Unauthorized);
+    }
+    let token = st.sessions.create();
+    Ok(Json(LoginResponse {
+        token,
+        token_type: "Bearer".into(),
+        expires_in_seconds: st.cfg.api.session_ttl_seconds,
+    }))
+}
+
+async fn admin_logout(
+    State(st): State<SharedState>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    if let Some(token) = bearer_token(&headers) {
+        st.sessions.revoke(&token);
+    }
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn admin_agents(

@@ -53,7 +53,27 @@ fn default_query_timeout() -> u64 {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ApiConfig {
     pub listen: SocketAddr,
+    /// Password file (plain text, chmod 0600). Preferred.
+    #[serde(default)]
+    pub admin_password_file: Option<PathBuf>,
+    /// Legacy name for the same password file (CLI Bearer still accepts this password).
+    #[serde(default = "default_admin_token_file")]
     pub admin_token_file: PathBuf,
+    #[serde(default = "default_admin_username")]
+    pub admin_username: String,
+    /// Browser session lifetime after login.
+    #[serde(default = "default_session_ttl")]
+    pub session_ttl_seconds: u64,
+}
+
+fn default_admin_token_file() -> PathBuf {
+    PathBuf::from("/etc/tailsvc/admin_token")
+}
+fn default_admin_username() -> String {
+    "admin".into()
+}
+fn default_session_ttl() -> u64 {
+    86400
 }
 
 #[derive(Debug, Clone, Deserialize)]

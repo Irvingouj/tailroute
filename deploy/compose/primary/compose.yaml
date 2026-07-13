@@ -6,14 +6,14 @@
 #   echo "$TAILSVC_ADMIN_TOKEN" > admin_token
 #   docker compose up -d
 
-name: tailsvc
+name: tailsvc-primary
 
 services:
   controller:
     build:
       context: ../../..
       dockerfile: deploy/docker/Dockerfile
-    image: tailsvc:local
+    image: tailsvc-primary:local
     network_mode: host
     restart: unless-stopped
     environment:
@@ -28,7 +28,7 @@ services:
     command: ["/usr/local/bin/tailsvc-controller"]
 
   agent:
-    image: tailsvc:local
+    image: tailsvc-primary:local
     network_mode: host
     restart: unless-stopped
     depends_on:

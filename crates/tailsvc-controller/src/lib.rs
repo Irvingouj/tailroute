@@ -3,6 +3,7 @@ pub mod api;
 pub mod backup;
 pub mod config;
 pub mod probe;
+pub mod sessions;
 pub mod state;
 
 use anyhow::Context;
@@ -45,7 +46,10 @@ impl ControllerBootstrap {
             },
             api: config::ApiConfig {
                 listen: api_listen,
+                admin_password_file: None,
                 admin_token_file: std::path::PathBuf::from("/nonexistent-use-inline"),
+                admin_username: "admin".into(),
+                session_ttl_seconds: 86400,
             },
             storage: config::StorageConfig {
                 sqlite_path: sqlite_path.to_string(),
@@ -66,7 +70,8 @@ impl ControllerBootstrap {
             .context("storage")?;
         let registry = DnsRegistry::new();
         let mut state_inner = AppState::new(storage.clone(), registry.clone(), cfg.clone())?;
-        state_inner.admin_token = admin_token.as_bytes().to_vec();
+        state_inner.admin_password = admin_token.as_bytes().to_vec();
+        state_inner.admin_username = "admin".into();
         state_inner
             .dns_up
             .store(true, std::sync::atomic::Ordering::SeqCst);

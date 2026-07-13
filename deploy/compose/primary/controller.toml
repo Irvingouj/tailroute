@@ -12,7 +12,9 @@ query_timeout_ms = 5000
 
 [api]
 listen = "100.64.0.1:18080"
+admin_username = "admin"
 admin_token_file = "/etc/tailsvc/admin_token"
+session_ttl_seconds = 86400
 
 [storage]
 sqlite_path = "/var/lib/tailsvc-controller/controller.db"

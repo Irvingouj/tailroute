@@ -9,7 +9,10 @@ query_timeout_ms = 5000
 
 [api]
 listen = "127.0.0.1:8080"
+admin_username = "admin"
 admin_token_file = "config/admin_token"
+# admin_password_file = "config/admin_password"  # optional; defaults to admin_token_file
+session_ttl_seconds = 86400
 
 [storage]
 sqlite_path = "data/controller.db"
