@@ -1,6 +1,6 @@
 mod store;
 
 pub use store::{
-    AgentRecord, DnsRoute, EnrollmentTokenRecord, PutRoutesOutcome, RouteConflictRecord, Storage,
-    StorageError,
+    AgentRecord, DnsRoute, EnabledServiceRecord, EnrollmentTokenRecord, PutRoutesOutcome,
+    RouteConflictRecord, Storage, StorageError,
 };

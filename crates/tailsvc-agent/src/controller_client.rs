@@ -1,7 +1,8 @@
 use anyhow::Context;
 use reqwest::Client;
 use tailsvc_common::api::{
-    EnrollRequest, EnrollResponse, HeartbeatRequest, PutRoutesRequest, PutRoutesResponse,
+    DesiredServicesResponse, DiscoveryReportRequest, EnrollRequest, EnrollResponse,
+    HeartbeatRequest, PutRoutesRequest, PutRoutesResponse,
 };
 
 pub struct ControllerClient {
@@ -66,6 +67,35 @@ impl ControllerClient {
             .await?;
         if !resp.status().is_success() {
             anyhow::bail!("put routes: {}", resp.status());
+        }
+        Ok(resp.json().await?)
+    }
+
+    pub async fn put_discovery(&self, req: DiscoveryReportRequest) -> anyhow::Result<()> {
+        let url = format!("{}/v1/agents/{}/discovery", self.base, self.agent_id);
+        let resp = self
+            .http
+            .put(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .json(&req)
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("discovery: {}", resp.status());
+        }
+        Ok(())
+    }
+
+    pub async fn desired_services(&self) -> anyhow::Result<DesiredServicesResponse> {
+        let url = format!("{}/v1/agents/{}/desired-services", self.base, self.agent_id);
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", format!("Bearer {}", self.token))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            anyhow::bail!("desired-services: {}", resp.status());
         }
         Ok(resp.json().await?)
     }

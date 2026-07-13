@@ -9,9 +9,13 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 use tailsvc_common::api::{
-    EnrollRequest, HeartbeatRequest, HeartbeatRouteRef, PutRoutesRequest, RouteEntry,
+    DiscoveryReportRequest, EnrollRequest, HeartbeatRequest, HeartbeatRouteRef, PutRoutesRequest,
+    RouteEntry,
 };
-use tailsvc_docker::{backend_url, is_relevant_event, resolve_backend, DockerRuntime};
+use tailsvc_common::backend::parse_backend_url;
+use tailsvc_docker::{
+    backend_url, is_relevant_event, list_candidates, resolve_backend, DockerRuntime,
+};
 use tailsvc_proxy::{BackendRoute, SharedRouteStore};
 use tracing::{info, warn};
 
@@ -261,6 +265,15 @@ impl AgentRun {
     }
 
     async fn reconcile_once(&mut self) -> anyhow::Result<()> {
+        // Full discovery report (all running containers) for admin click-to-enable.
+        if let Ok(cands) = list_candidates(self.docker.docker()).await {
+            let services: Vec<_> = cands.iter().map(|c| c.to_dto()).collect();
+            let _ = self
+                .client
+                .put_discovery(DiscoveryReportRequest { services })
+                .await;
+        }
+
         let services = self.docker.list_services().await?;
         let mut local = HashMap::new();
         let mut api_routes = Vec::new();
@@ -308,6 +321,45 @@ impl AgentRun {
                     hostname: key,
                     backend_fingerprint: backend.fingerprint(),
                 });
+            }
+        }
+
+        // Admin click-to-enable intents from controller (between labels and static).
+        if let Ok(desired) = self.client.desired_services().await {
+            for d in desired.services {
+                let backend = match parse_backend_url(&d.backend) {
+                    Ok(b) => b,
+                    Err(e) => {
+                        warn!(identity = %d.identity_key, error = %e, "enabled service bad backend");
+                        continue;
+                    }
+                };
+                let url = backend.base_url();
+                for host in d.hostnames {
+                    if local.contains_key(&host) {
+                        warn!(hostname = %host, "enabled intent overrides label route");
+                        api_routes.retain(|r| r.hostname != host);
+                        hb_refs.retain(|r| r.hostname != host);
+                    }
+                    local.insert(
+                        host.clone(),
+                        BackendRoute {
+                            backend: backend.clone(),
+                            container_id: None,
+                            container_name: d.container_name.clone().or(Some("enabled".into())),
+                        },
+                    );
+                    api_routes.push(RouteEntry {
+                        hostname: host.clone(),
+                        backend: url.clone(),
+                        container_id: None,
+                        container_name: d.container_name.clone().or(Some("enabled".into())),
+                    });
+                    hb_refs.push(HeartbeatRouteRef {
+                        hostname: host,
+                        backend_fingerprint: backend.fingerprint(),
+                    });
+                }
             }
         }
 

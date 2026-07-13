@@ -79,8 +79,24 @@
         <div class="card"><div class="label">Controller</div><div class="value" id="c-status">—</div></div>
         <div class="card"><div class="label">Routes</div><div class="value" id="c-routes">—</div></div>
         <div class="card"><div class="label">Probe OK</div><div class="value" id="c-probe-ok">—</div></div>
-        <div class="card"><div class="label">Agents</div><div class="value" id="c-agents">—</div></div>
+        <div class="card"><div class="label">Discovered</div><div class="value" id="c-disc">—</div></div>
       </div>
+      <section>
+        <h2>Discovery — click Enable (no container recreate)</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Container</th><th>Image</th><th>Suggested backend</th>
+              <th>Status</th><th>Hostnames</th><th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="disc-body"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+        </table>
+        <p class="muted" style="margin-top:8px">
+          Lists running containers reported by agents (DB images skipped by default).
+          Enable stores intent on the controller; agent picks it up on next reconcile (~15s).
+        </p>
+      </section>
       <section>
         <h2>Registered sites</h2>
         <table>
@@ -209,20 +225,87 @@
       showLogin("");
     }
 
+    async function enableService(item) {
+      const defaultHost = (item.container_name || "svc").toLowerCase().replace(/[^a-z0-9-]+/g, "-") + ".services.example";
+      const host = prompt("Hostname to expose (must match allowlist if configured):", item.hostnames[0] || defaultHost);
+      if (!host) return;
+      let backend = item.backend || item.suggested_backend || "";
+      backend = prompt("Backend http://host:port", backend || "http://127.0.0.1:8080");
+      if (!backend) return;
+      try {
+        await api("/v1/admin/services/enable", {
+          method: "POST",
+          body: JSON.stringify({
+            agent_id: item.agent_id,
+            identity_key: item.identity_key,
+            container_name: item.container_name,
+            hostnames: host.split(",").map(s => s.trim()).filter(Boolean),
+            backend,
+          }),
+        });
+        await refresh();
+      } catch (e) {
+        setError(String(e.message || e));
+      }
+    }
+
+    async function disableService(id) {
+      if (!confirm("Disable this service? DNS/proxy will drop after agent reconcile.")) return;
+      try {
+        await api(`/v1/admin/services/${encodeURIComponent(id)}/disable`, { method: "POST" });
+        await refresh();
+      } catch (e) {
+        setError(String(e.message || e));
+      }
+    }
+
     async function refresh() {
       setError("");
       $("btn-refresh").disabled = true;
       try {
-        const [health, ready, dash] = await Promise.all([
+        const [health, ready, dash, disc] = await Promise.all([
           fetch("/health").then(r => r.ok ? r.text() : "down").catch(() => "down"),
           fetch("/ready").then(r => r.ok ? "ready" : "not ready").catch(() => "not ready"),
           api("/v1/admin/dashboard"),
+          api("/v1/admin/discovery").catch(() => []),
         ]);
         $("c-status").textContent = health === "ok" ? (ready === "ready" ? "ok/ready" : "ok") : "down";
         $("c-routes").textContent = String(dash.routes.length);
         $("c-agents").textContent = String(dash.agents.length);
+        $("c-disc").textContent = String(disc.length || 0);
         const okN = dash.routes.filter(r => r.http_probe === "ok").length;
         $("c-probe-ok").textContent = `${okN}/${dash.routes.length}`;
+
+        const db = $("disc-body");
+        if (!disc.length) {
+          db.innerHTML = `<tr><td colspan="6" class="muted">No discovery data yet — wait for agent reconcile (~15s)</td></tr>`;
+        } else {
+          db.innerHTML = disc.map((item, idx) => {
+            const st = item.enabled
+              ? pill("ok", "enabled")
+              : (item.has_tailsvc_labels ? pill("muted", "label") : pill("warn", "off"));
+            const hosts = item.hostnames.length ? item.hostnames.join(", ") : "—";
+            const sug = item.suggested_backend || (item.published_ports.length ? "ports: " + item.published_ports.join(",") : "—");
+            const action = item.enabled && item.enabled_id
+              ? `<button data-disable="${escapeHtml(item.enabled_id)}">Disable</button>`
+              : `<button class="primary" data-enable-idx="${idx}">Enable</button>`;
+            return `<tr>
+              <td class="mono">${escapeHtml(item.container_name)}<br/><span class="muted">${escapeHtml(item.identity_key)}</span></td>
+              <td class="mono muted">${escapeHtml(item.image)}</td>
+              <td class="mono">${escapeHtml(sug)}</td>
+              <td>${st}</td>
+              <td class="mono">${escapeHtml(hosts)}</td>
+              <td>${action}</td>
+            </tr>`;
+          }).join("");
+          window.__disc = disc;
+          db.querySelectorAll("[data-enable-idx]").forEach(btn => {
+            btn.onclick = () => enableService(window.__disc[Number(btn.getAttribute("data-enable-idx"))]);
+          });
+          db.querySelectorAll("[data-disable]").forEach(btn => {
+            btn.onclick = () => disableService(btn.getAttribute("data-disable"));
+          });
+        }
 
         const rb = $("routes-body");
         if (!dash.routes.length) {

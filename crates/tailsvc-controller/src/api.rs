@@ -8,10 +8,12 @@ use chrono::Duration as ChronoDuration;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tailsvc_common::api::{
-    AdminAgentView, AdminDashboard, AdminRouteHealthView, AdminRouteView,
-    CreateEnrollmentTokenResponse, EnrollRequest, EnrollResponse, HeartbeatRequest,
-    PutRoutesRequest, PutRoutesResponse,
+    AdminAgentView, AdminDashboard, AdminDiscoveryItem, AdminRouteHealthView, AdminRouteView,
+    CreateEnrollmentTokenResponse, DesiredEnabledService, DesiredServicesResponse,
+    DiscoveryReportRequest, EnableServiceRequest, EnableServiceResponse, EnrollRequest,
+    EnrollResponse, HeartbeatRequest, PutRoutesRequest, PutRoutesResponse,
 };
+use tailsvc_common::hostname::normalize_hostname;
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::trace::TraceLayer;
 
@@ -29,6 +31,17 @@ pub fn router(state: SharedState) -> Router {
         .route("/v1/agents/enroll", post(enroll))
         .route("/v1/agents/{agent_id}/heartbeat", post(heartbeat))
         .route("/v1/agents/{agent_id}/routes", put(put_routes))
+        .route("/v1/agents/{agent_id}/discovery", put(put_discovery))
+        .route(
+            "/v1/agents/{agent_id}/desired-services",
+            get(desired_services),
+        )
+        .route("/v1/admin/discovery", get(admin_discovery))
+        .route("/v1/admin/services/enable", post(admin_enable_service))
+        .route(
+            "/v1/admin/services/{id}/disable",
+            post(admin_disable_service),
+        )
         .route("/v1/admin/agents", get(admin_agents))
         .route("/v1/admin/routes", get(admin_routes))
         .route("/v1/admin/dashboard", get(admin_dashboard))
@@ -162,6 +175,200 @@ async fn put_routes(
         accepted: out.accepted,
         conflicts: out.conflicts,
     }))
+}
+
+async fn put_discovery(
+    State(st): State<SharedState>,
+    Path(agent_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<DiscoveryReportRequest>,
+) -> Result<StatusCode, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    st.storage
+        .verify_agent_token(&agent_id, &token)
+        .await
+        .map_err(|_| ApiError::Unauthorized)?;
+    let payload = serde_json::to_string(&body.services)
+        .map_err(|e| ApiError::Forbidden(format!("serialize discovery: {e}")))?;
+    st.storage
+        .put_discovery_snapshot(&agent_id, &payload)
+        .await
+        .map_err(ApiError::Storage)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn desired_services(
+    State(st): State<SharedState>,
+    Path(agent_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<DesiredServicesResponse>, ApiError> {
+    let token = bearer_token(&headers).ok_or(ApiError::Unauthorized)?;
+    st.storage
+        .verify_agent_token(&agent_id, &token)
+        .await
+        .map_err(|_| ApiError::Unauthorized)?;
+    let rows = st
+        .storage
+        .list_enabled_for_agent(&agent_id)
+        .await
+        .map_err(ApiError::Storage)?;
+    let mut services = Vec::new();
+    for r in rows {
+        let hostnames: Vec<String> = serde_json::from_str(&r.hostnames_json).unwrap_or_default();
+        services.push(DesiredEnabledService {
+            id: r.id,
+            identity_key: r.identity_key,
+            hostnames,
+            backend: r.backend,
+            container_name: r.container_name,
+        });
+    }
+    Ok(Json(DesiredServicesResponse { services }))
+}
+
+async fn admin_discovery(
+    State(st): State<SharedState>,
+    headers: HeaderMap,
+) -> Result<Json<Vec<AdminDiscoveryItem>>, ApiError> {
+    check_admin(&st, &headers)?;
+    let agents = st.storage.list_agents().await.map_err(ApiError::Storage)?;
+    let enabled = st
+        .storage
+        .list_all_enabled()
+        .await
+        .map_err(ApiError::Storage)?;
+    let snaps = st
+        .storage
+        .list_discovery_snapshots()
+        .await
+        .map_err(ApiError::Storage)?;
+
+    let agent_meta: std::collections::HashMap<_, _> = agents
+        .into_iter()
+        .map(|a| (a.agent_id.clone(), a))
+        .collect();
+
+    let mut enabled_by_key: std::collections::HashMap<(String, String), _> =
+        std::collections::HashMap::new();
+    for e in &enabled {
+        enabled_by_key.insert((e.agent_id.clone(), e.identity_key.clone()), e);
+    }
+
+    let mut out = Vec::new();
+    for (agent_id, payload, updated_at) in snaps {
+        let meta = agent_meta.get(&agent_id);
+        let services: Vec<tailsvc_common::api::DiscoveredContainerDto> =
+            serde_json::from_str(&payload).unwrap_or_default();
+        for s in services {
+            let en = enabled_by_key.get(&(agent_id.clone(), s.identity_key.clone()));
+            let (enabled_flag, enabled_id, hostnames, backend) = match en {
+                Some(e) if e.enabled => {
+                    let hosts: Vec<String> =
+                        serde_json::from_str(&e.hostnames_json).unwrap_or_default();
+                    (true, Some(e.id.clone()), hosts, Some(e.backend.clone()))
+                }
+                _ => (false, None, vec![], None),
+            };
+            out.push(AdminDiscoveryItem {
+                agent_id: agent_id.clone(),
+                agent_name: meta
+                    .map(|m| m.display_name.clone())
+                    .unwrap_or_else(|| agent_id.clone()),
+                tailscale_ipv4: meta.map(|m| m.tailscale_ipv4.clone()).unwrap_or_default(),
+                identity_key: s.identity_key,
+                container_id: s.container_id,
+                container_name: s.container_name,
+                image: s.image,
+                suggested_backend: s.suggested_backend,
+                published_ports: s.published_ports,
+                exposed_ports: s.exposed_ports,
+                has_tailsvc_labels: s.has_tailsvc_labels,
+                enabled: enabled_flag,
+                enabled_id,
+                hostnames,
+                backend,
+                discovery_updated_at: Some(updated_at.clone()),
+            });
+        }
+    }
+    out.sort_by(|a, b| {
+        (a.agent_name.as_str(), a.container_name.as_str())
+            .cmp(&(b.agent_name.as_str(), b.container_name.as_str()))
+    });
+    Ok(Json(out))
+}
+
+async fn admin_enable_service(
+    State(st): State<SharedState>,
+    headers: HeaderMap,
+    Json(body): Json<EnableServiceRequest>,
+) -> Result<Json<EnableServiceResponse>, ApiError> {
+    check_admin(&st, &headers)?;
+    if body.hostnames.is_empty() {
+        return Err(ApiError::Forbidden("at least one hostname required".into()));
+    }
+    let mut hosts = Vec::new();
+    for h in &body.hostnames {
+        let n = normalize_hostname(h).map_err(|e| ApiError::Forbidden(e.to_string()))?;
+        if let Err(msg) = st.cfg.hostname_allowed(n.as_str()) {
+            return Err(ApiError::Forbidden(msg));
+        }
+        hosts.push(n.into_inner());
+    }
+    let backend = tailsvc_common::backend::parse_backend_url(&body.backend)
+        .map_err(|e| ApiError::Forbidden(e.to_string()))?;
+    // Store as http://host:port for agent parse_backend_url.
+    let backend_url = format!("http://{}", backend.authority());
+    let id = format!(
+        "en_{}",
+        tailsvc_common::auth::generate_token(12).replace(['+', '/', '='], "")
+    );
+    let hostnames_json =
+        serde_json::to_string(&hosts).map_err(|e| ApiError::Forbidden(e.to_string()))?;
+    st.storage
+        .upsert_enabled_service(
+            &id,
+            &body.agent_id,
+            &body.identity_key,
+            body.container_name.as_deref(),
+            &hostnames_json,
+            &backend_url,
+        )
+        .await
+        .map_err(ApiError::Storage)?;
+    let _ = st
+        .storage
+        .audit(
+            "service_enable",
+            &format!("{} -> {}", body.identity_key, hosts.join(",")),
+        )
+        .await;
+    // Re-read to get stable id on conflict update path: look up by listing
+    let all = st
+        .storage
+        .list_enabled_for_agent(&body.agent_id)
+        .await
+        .map_err(ApiError::Storage)?;
+    let final_id = all
+        .into_iter()
+        .find(|e| e.identity_key == body.identity_key)
+        .map(|e| e.id)
+        .unwrap_or(id);
+    Ok(Json(EnableServiceResponse { id: final_id }))
+}
+
+async fn admin_disable_service(
+    State(st): State<SharedState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    check_admin(&st, &headers)?;
+    st.storage
+        .set_enabled_service(&id, false)
+        .await
+        .map_err(ApiError::Storage)?;
+    let _ = st.storage.audit("service_disable", &id).await;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn check_admin(st: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {

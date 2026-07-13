@@ -429,6 +429,169 @@ impl Storage {
         info!(deleted_routes = r.rows_affected(), "purged stale routes");
         Ok(r.rows_affected())
     }
+
+    pub async fn put_discovery_snapshot(&self, agent_id: &str, payload_json: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO discovery_snapshots (agent_id, payload_json, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(agent_id) DO UPDATE SET payload_json = excluded.payload_json, updated_at = excluded.updated_at",
+        )
+        .bind(agent_id)
+        .bind(payload_json)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn get_discovery_snapshot(&self, agent_id: &str) -> Result<Option<(String, String)>> {
+        let row = sqlx::query(
+            "SELECT payload_json, updated_at FROM discovery_snapshots WHERE agent_id = ?",
+        )
+        .bind(agent_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.map(|r| (r.get("payload_json"), r.get("updated_at"))))
+    }
+
+    pub async fn list_discovery_snapshots(&self) -> Result<Vec<(String, String, String)>> {
+        let rows = sqlx::query(
+            "SELECT agent_id, payload_json, updated_at FROM discovery_snapshots ORDER BY agent_id",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|r| {
+                (
+                    r.get("agent_id"),
+                    r.get("payload_json"),
+                    r.get("updated_at"),
+                )
+            })
+            .collect())
+    }
+
+    pub async fn upsert_enabled_service(
+        &self,
+        id: &str,
+        agent_id: &str,
+        identity_key: &str,
+        container_name: Option<&str>,
+        hostnames_json: &str,
+        backend: &str,
+    ) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO enabled_services
+             (id, agent_id, identity_key, container_name, hostnames_json, backend, enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+             ON CONFLICT(agent_id, identity_key) DO UPDATE SET
+               container_name = excluded.container_name,
+               hostnames_json = excluded.hostnames_json,
+               backend = excluded.backend,
+               enabled = 1,
+               updated_at = excluded.updated_at",
+        )
+        .bind(id)
+        .bind(agent_id)
+        .bind(identity_key)
+        .bind(container_name)
+        .bind(hostnames_json)
+        .bind(backend)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    pub async fn set_enabled_service(&self, id: &str, enabled: bool) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        let r = sqlx::query("UPDATE enabled_services SET enabled = ?, updated_at = ? WHERE id = ?")
+            .bind(if enabled { 1 } else { 0 })
+            .bind(&now)
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        if r.rows_affected() == 0 {
+            return Err(StorageError::NotFound);
+        }
+        Ok(())
+    }
+
+    pub async fn list_enabled_for_agent(
+        &self,
+        agent_id: &str,
+    ) -> Result<Vec<EnabledServiceRecord>> {
+        let rows = sqlx::query(
+            "SELECT id, agent_id, identity_key, container_name, hostnames_json, backend, enabled, created_at, updated_at
+             FROM enabled_services WHERE agent_id = ? AND enabled = 1",
+        )
+        .bind(agent_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(row_to_enabled).collect())
+    }
+
+    pub async fn list_all_enabled(&self) -> Result<Vec<EnabledServiceRecord>> {
+        let rows = sqlx::query(
+            "SELECT id, agent_id, identity_key, container_name, hostnames_json, backend, enabled, created_at, updated_at
+             FROM enabled_services ORDER BY agent_id, identity_key",
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.iter().map(row_to_enabled).collect())
+    }
+
+    pub async fn get_enabled_by_id(&self, id: &str) -> Result<Option<EnabledServiceRecord>> {
+        let row = sqlx::query(
+            "SELECT id, agent_id, identity_key, container_name, hostnames_json, backend, enabled, created_at, updated_at
+             FROM enabled_services WHERE id = ?",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.as_ref().map(row_to_enabled))
+    }
+
+    pub async fn audit(&self, event_type: &str, detail: &str) -> Result<()> {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO audit_events (event_type, detail, created_at) VALUES (?, ?, ?)")
+            .bind(event_type)
+            .bind(detail)
+            .bind(&now)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct EnabledServiceRecord {
+    pub id: String,
+    pub agent_id: String,
+    pub identity_key: String,
+    pub container_name: Option<String>,
+    pub hostnames_json: String,
+    pub backend: String,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn row_to_enabled(row: &sqlx::sqlite::SqliteRow) -> EnabledServiceRecord {
+    EnabledServiceRecord {
+        id: row.get("id"),
+        agent_id: row.get("agent_id"),
+        identity_key: row.get("identity_key"),
+        container_name: row.get("container_name"),
+        hostnames_json: row.get("hostnames_json"),
+        backend: row.get("backend"),
+        enabled: row.get::<i64, _>("enabled") != 0,
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    }
 }
 
 fn row_to_agent(row: &sqlx::sqlite::SqliteRow) -> AgentRecord {

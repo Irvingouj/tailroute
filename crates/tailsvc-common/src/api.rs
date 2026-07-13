@@ -105,3 +105,74 @@ pub struct CreateEnrollmentTokenResponse {
     pub token: String,
     pub expires_at: Option<DateTime<Utc>>,
 }
+
+// --- Discovery + click-to-enable ---
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveredContainerDto {
+    pub identity_key: String,
+    pub container_id: String,
+    pub container_name: String,
+    pub image: String,
+    pub network_mode: Option<String>,
+    pub suggested_backend: Option<String>,
+    pub published_ports: Vec<u16>,
+    pub exposed_ports: Vec<u16>,
+    pub compose_project: Option<String>,
+    pub compose_service: Option<String>,
+    pub has_tailsvc_labels: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryReportRequest {
+    pub services: Vec<DiscoveredContainerDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesiredEnabledService {
+    pub id: String,
+    pub identity_key: String,
+    pub hostnames: Vec<String>,
+    pub backend: String,
+    pub container_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesiredServicesResponse {
+    pub services: Vec<DesiredEnabledService>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminDiscoveryItem {
+    pub agent_id: String,
+    pub agent_name: String,
+    pub tailscale_ipv4: String,
+    pub identity_key: String,
+    pub container_id: String,
+    pub container_name: String,
+    pub image: String,
+    pub suggested_backend: Option<String>,
+    pub published_ports: Vec<u16>,
+    pub exposed_ports: Vec<u16>,
+    pub has_tailsvc_labels: bool,
+    pub enabled: bool,
+    pub enabled_id: Option<String>,
+    pub hostnames: Vec<String>,
+    pub backend: Option<String>,
+    pub discovery_updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnableServiceRequest {
+    pub agent_id: String,
+    pub identity_key: String,
+    pub container_name: Option<String>,
+    pub hostnames: Vec<String>,
+    /// Required if suggested_backend missing / multi-port.
+    pub backend: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EnableServiceResponse {
+    pub id: String,
+}
